@@ -1,0 +1,91 @@
+#include "stm32f10x.h"
+#include <stdio.h>
+#include "sys.h"
+#include "delay.h"
+#include "usart.h"
+#include "RTOS.h"
+
+#define task0_Prio 3   
+#define task1_Prio 4
+u32 TASK0TASK_STK[30];
+u32 TASK1TASK_STK[30];
+
+void Task0Task(void *pdata);
+void Task1Task(void *pdata);
+
+void TIM3_Int_Init(u16 arr,u16 psc);
+
+ int main(void)
+ {	  
+   delay_init();
+   uart_init(115200);	 //串口初始化为115200
+  // TIM3_Int_Init(10 - 1,7200 - 1);
+   NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2); //设置NVIC中断分组2:2位抢占优先级，2位响应优先级
+   
+   OSTaskCreate(Task0Task, (void*)0, (u32*)&TASK0TASK_STK[30], task0_Prio);
+   OSTaskCreate(Task1Task, (void*)0, (u32*)&TASK1TASK_STK[30], task1_Prio);
+   OSStart();
+ }
+ 
+ /* 系统空闲任务 */
+void Task0Task(void *pdata)
+{
+    while (1)
+    {
+        printf("任务1运行\r\n ");
+        OSTimeDly(100);
+    }
+}
+
+  /* 系统空闲任务 */
+void Task1Task(void *pdata)
+{
+    while (1)
+    {
+        printf("任务2运行\r\n ");
+        OSTimeDly(200);
+    }
+}
+
+void TIM3_Int_Init(u16 arr,u16 psc)
+{
+    TIM_TimeBaseInitTypeDef  TIM_TimeBaseStructure;
+	NVIC_InitTypeDef NVIC_InitStructure;
+
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE); //时钟使能
+	
+	//定时器TIM3初始化
+	TIM_TimeBaseStructure.TIM_Period = arr; //设置在下一个更新事件装入活动的自动重装载寄存器周期的值	
+	TIM_TimeBaseStructure.TIM_Prescaler =psc; //设置用来作为TIMx时钟频率除数的预分频值
+	TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1; //设置时钟分割:TDTS = Tck_tim
+	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;  //TIM向上计数模式
+	TIM_TimeBaseInit(TIM3, &TIM_TimeBaseStructure); //根据指定的参数初始化TIMx的时间基数单位
+ 
+	TIM_ITConfig(TIM3,TIM_IT_Update,ENABLE ); //使能指定的TIM3中断,允许更新中断
+
+	//中断优先级NVIC设置
+	NVIC_InitStructure.NVIC_IRQChannel = TIM3_IRQn;  //TIM3中断
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;  //先占优先级0级
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 3;  //从优先级3级
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE; //IRQ通道被使能
+	NVIC_Init(&NVIC_InitStructure);  //初始化NVIC寄存器
+
+
+	TIM_Cmd(TIM3, ENABLE);  //使能TIMx					 
+}
+//定时器3中断服务程序
+void TIM3_IRQHandler(void)   //TIM3中断
+{   
+    OS_ENTER_CRITICAL();
+	if (TIM_GetITStatus(TIM3, TIM_IT_Update) != RESET)  //检查TIM3更新中断发生与否
+	{
+		TIM_ClearITPendingBit(TIM3, TIM_IT_Update  );  //清除TIMx更新中断标志 
+        TicksInterrupt();
+	}
+    OS_EXIT_CRITICAL();    
+}
+
+
+
+
+ 
